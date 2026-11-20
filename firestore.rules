@@ -1,0 +1,194 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Primitives ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidInviteCode(code) {
+      return code is string && code.size() >= 5 && code.size() <= 32 && code.matches('^[A-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'c.matohuertas@gmail.com';
+    }
+
+    function isVerifiedOwner(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.auth.token.email_verified == true;
+    }
+
+    function isValidPrice(v) {
+      return (v is int || v is float) && v >= 0 && v <= 10;
+    }
+
+    function isValidPercentage(v) {
+      return (v is int || v is float) && v >= 0 && v <= 100;
+    }
+
+    function isValidInviteCodeDoc(data, codeId) {
+      return data is map
+        && data.keys().hasAll(['code', 'label', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['code', 'label', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && isValidInviteCode(data.code)
+        && data.code == codeId
+        && data.label is string && data.label.size() <= 60
+        && data.active is bool
+        && isValidId(data.createdBy)
+        && data.createdBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTariffConfig(t) {
+      return t is map
+        && t.keys().hasAll([
+          'name', 'mode', 'fixedPrice', 'puntaPrice', 'llanoPrice',
+          'vallePrice', 'powerP1Price', 'powerP2Price', 'samePowerPrice'
+        ])
+        && t.keys().hasOnly([
+          'name', 'mode', 'fixedPrice', 'puntaPrice', 'llanoPrice',
+          'vallePrice', 'powerP1Price', 'powerP2Price', 'samePowerPrice'
+        ])
+        && t.name is string && t.name.size() <= 60
+        && t.mode is string && t.mode.size() <= 10 && (t.mode == 'fixed' || t.mode == 'tou')
+        && isValidPrice(t.fixedPrice)
+        && isValidPrice(t.puntaPrice)
+        && isValidPrice(t.llanoPrice)
+        && isValidPrice(t.vallePrice)
+        && isValidPrice(t.powerP1Price)
+        && isValidPrice(t.powerP2Price)
+        && t.samePowerPrice is bool;
+    }
+
+    function isValidConsumptionSplit(s) {
+      return s is map
+        && s.keys().hasAll(['punta', 'llano', 'valle'])
+        && s.keys().hasOnly(['punta', 'llano', 'valle'])
+        && isValidPercentage(s.punta)
+        && isValidPercentage(s.llano)
+        && isValidPercentage(s.valle)
+        && (s.punta + s.llano + s.valle) >= 99
+        && (s.punta + s.llano + s.valle) <= 101;
+    }
+
+    function isValidConsumptionProfile(c) {
+      return c is map
+        && c.keys().hasAll([
+          'monthlyKwh', 'powerP1Kw', 'powerP2Kw', 'samePowerKw', 'split', 'includeTaxes'
+        ])
+        && c.keys().hasOnly([
+          'monthlyKwh', 'powerP1Kw', 'powerP2Kw', 'samePowerKw', 'split', 'includeTaxes'
+        ])
+        && (c.monthlyKwh is int || c.monthlyKwh is float) && c.monthlyKwh >= 0 && c.monthlyKwh <= 100000
+        && (c.powerP1Kw is int || c.powerP1Kw is float) && c.powerP1Kw >= 0 && c.powerP1Kw <= 100
+        && (c.powerP2Kw is int || c.powerP2Kw is float) && c.powerP2Kw >= 0 && c.powerP2Kw <= 100
+        && c.samePowerKw is bool
+        && isValidConsumptionSplit(c.split)
+        && c.includeTaxes is bool;
+    }
+
+    function isValidUserEnergyProfile(data) {
+      return data is map
+        && data.keys().hasAll(['ownerId', 'inviteCode', 'currentTariff', 'consumption', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'inviteCode', 'currentTariff', 'consumption', 'createdAt', 'updatedAt'])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidInviteCode(data.inviteCode)
+        && isValidTariffConfig(data.currentTariff)
+        && isValidConsumptionProfile(data.consumption)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: /inviteCodes/{codeId} (Admin-managed invite codes) ---
+    match /inviteCodes/{codeId} {
+      allow get: if isAdmin() && isValidInviteCode(codeId);
+      allow list: if isAdmin() && existing().createdBy == request.auth.uid;
+
+      allow create: if isAdmin()
+        && isValidInviteCode(codeId)
+        && isValidInviteCodeDoc(incoming(), codeId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidInviteCode(codeId)
+        && isValidInviteCodeDoc(incoming(), codeId)
+        && incoming().code == existing().code
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['active', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['label', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['active', 'label', 'updatedAt'])
+        );
+
+      allow delete: if isAdmin() && isValidInviteCode(codeId);
+    }
+
+    // --- Collection: /users/{userId} (Private per-user synced tariff & consumption) ---
+    match /users/{userId} {
+      allow get: if isVerifiedOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isVerifiedOwner(userId)
+        && isValidId(userId)
+        && isValidUserEnergyProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() || (
+            exists(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode))
+            && get(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode)).data.active == true
+          )
+        );
+
+      allow update: if isVerifiedOwner(userId)
+        && isValidId(userId)
+        && isValidUserEnergyProfile(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (!('inviteCode' in existing()) || incoming().inviteCode == existing().inviteCode)
+        && (
+          // Action 1: Update tariff only
+          incoming().diff(existing()).affectedKeys().hasOnly(['currentTariff', 'updatedAt']) ||
+          // Action 2: Update consumption profile only
+          incoming().diff(existing()).affectedKeys().hasOnly(['consumption', 'updatedAt']) ||
+          // Action 3: Sync both tariff and consumption together
+          incoming().diff(existing()).affectedKeys().hasOnly(['currentTariff', 'consumption', 'updatedAt']) ||
+          // Action 4: Backfill inviteCode on existing admin profile created prior to invite codes
+          (isAdmin() && !('inviteCode' in existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['currentTariff', 'consumption', 'inviteCode', 'updatedAt']))
+        );
+
+      allow delete: if isVerifiedOwner(userId) && isValidId(userId);
+    }
+  }
+}

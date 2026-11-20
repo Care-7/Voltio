@@ -1,0 +1,6 @@
+{
+  "name": "Voltio",
+  "description": "Comparador minimalista mobile-first de tarifas de la luz en España (2.0TD) para calcular tu ahorro mensual y anual.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

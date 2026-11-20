@@ -1,0 +1,215 @@
+{
+  "entities": {
+    "TariffConfig": {
+      "title": "TariffConfig",
+      "description": "Spanish 2.0TD electricity tariff pricing configuration (fixed 24h or 3-period).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Optional company or tariff display name",
+          "maxLength": 60
+        },
+        "mode": {
+          "type": "string",
+          "description": "Tariff pricing mode",
+          "enum": ["fixed", "tou"]
+        },
+        "fixedPrice": {
+          "type": "number",
+          "description": "Flat 24h energy price in EUR/kWh"
+        },
+        "puntaPrice": {
+          "type": "number",
+          "description": "Peak (P1) energy price in EUR/kWh"
+        },
+        "llanoPrice": {
+          "type": "number",
+          "description": "Mid (P2) energy price in EUR/kWh"
+        },
+        "vallePrice": {
+          "type": "number",
+          "description": "Off-peak (P3) energy price in EUR/kWh"
+        },
+        "powerP1Price": {
+          "type": "number",
+          "description": "Contracted power P1 price in EUR/kW/day"
+        },
+        "powerP2Price": {
+          "type": "number",
+          "description": "Contracted power P2 price in EUR/kW/day"
+        },
+        "samePowerPrice": {
+          "type": "boolean",
+          "description": "Whether P1 and P2 share the same daily power rate"
+        }
+      },
+      "required": [
+        "name",
+        "mode",
+        "fixedPrice",
+        "puntaPrice",
+        "llanoPrice",
+        "vallePrice",
+        "powerP1Price",
+        "powerP2Price",
+        "samePowerPrice"
+      ]
+    },
+    "ConsumptionSplit": {
+      "title": "ConsumptionSplit",
+      "description": "Percentage split of monthly electricity usage across 2.0TD periods.",
+      "type": "object",
+      "properties": {
+        "punta": {
+          "type": "number",
+          "description": "Peak period usage percentage (0-100)"
+        },
+        "llano": {
+          "type": "number",
+          "description": "Mid period usage percentage (0-100)"
+        },
+        "valle": {
+          "type": "number",
+          "description": "Off-peak period usage percentage (0-100)"
+        }
+      },
+      "required": ["punta", "llano", "valle"]
+    },
+    "ConsumptionProfile": {
+      "title": "ConsumptionProfile",
+      "description": "Household monthly consumption, contracted power, period split, and tax preference.",
+      "type": "object",
+      "properties": {
+        "monthlyKwh": {
+          "type": "number",
+          "description": "Estimated monthly energy usage in kWh"
+        },
+        "powerP1Kw": {
+          "type": "number",
+          "description": "Contracted P1 peak power in kW"
+        },
+        "powerP2Kw": {
+          "type": "number",
+          "description": "Contracted P2 off-peak power in kW"
+        },
+        "samePowerKw": {
+          "type": "boolean",
+          "description": "Whether P1 and P2 have identical contracted power"
+        },
+        "split": {
+          "type": "object",
+          "$ref": "#/entities/ConsumptionSplit",
+          "description": "2.0TD hourly split percentages"
+        },
+        "includeTaxes": {
+          "type": "boolean",
+          "description": "Whether to apply Spanish IEE (5.11%) and IVA (21%)"
+        }
+      },
+      "required": [
+        "monthlyKwh",
+        "powerP1Kw",
+        "powerP2Kw",
+        "samePowerKw",
+        "split",
+        "includeTaxes"
+      ]
+    },
+    "InviteCode": {
+      "title": "InviteCode",
+      "description": "Admin-managed invite code required for new users to activate their Voltio profile.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Normalized uppercase invite code matching the document ID",
+          "minLength": 6,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "label": {
+          "type": "string",
+          "description": "Optional note for the admin (e.g. Familia, Amigos)",
+          "maxLength": 60
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether new users can currently redeem this code"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Firebase Auth UID of the admin who created this code",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when code was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest code update"
+        }
+      },
+      "required": ["code", "label", "active", "createdBy", "createdAt", "updatedAt"]
+    },
+    "UserEnergyProfile": {
+      "title": "UserEnergyProfile",
+      "description": "Private synced document storing a user's persistent current tariff and consumption profile.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the profile owner",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "inviteCode": {
+          "type": "string",
+          "description": "Invite code redeemed upon activation (or ADMIN for the owner)",
+          "minLength": 5,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "currentTariff": {
+          "type": "object",
+          "$ref": "#/entities/TariffConfig",
+          "description": "User's persistent current electricity tariff"
+        },
+        "consumption": {
+          "type": "object",
+          "$ref": "#/entities/ConsumptionProfile",
+          "description": "User's monthly consumption and power profile"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest sync update"
+        }
+      },
+      "required": ["ownerId", "inviteCode", "currentTariff", "consumption", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/inviteCodes/{codeId}": {
+      "schema": {
+        "$ref": "#/entities/InviteCode"
+      },
+      "description": "Admin-only collection of active/inactive invite codes verified server-side during user profile creation."
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserEnergyProfile"
+      },
+      "description": "Private per-user synced energy tariff and consumption profile, isolated to each verified owner."
+    }
+  }
+}
